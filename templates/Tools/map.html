@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zoomable Image Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map { height: 100vh; } /* Set the height of the map */
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+	<script>
+		var map = L.map('map', {
+			minZoom: 1,
+			maxZoom: 4,
+			center: [0, 0],
+			zoom: 1,
+			crs: L.CRS.Simple
+		});
+
+		var imageUrl = 'test.png'; // Replace with your image URL
+		var pins = []; // Array to store pin data
+
+		var img = new Image();
+		img.onload = function() {
+			var w = this.width;
+			var h = this.height;
+			var southWest = map.unproject([0, h], map.getMaxZoom()-1);
+			var northEast = map.unproject([w, 0], map.getMaxZoom()-1);
+			var bounds = new L.LatLngBounds(southWest, northEast);
+			L.imageOverlay(imageUrl, bounds).addTo(map);
+			map.fitBounds(bounds);
+		};
+		img.src = imageUrl;
+
+		map.on('click', function(e) {
+			var lat = e.latlng.lat;
+			var lng = e.latlng.lng;
+			
+			// Add a marker to the map at the clicked location
+			L.marker([lat, lng]).addTo(map);
+
+			// Add pin data to the array
+			pins.push({ latitude: lat, longitude: lng });
+
+			// Display or handle the JSON data
+			handleJsonData(pins);
+		});
+
+		function handleJsonData(pins) {
+
+			// Send pin data to Flask server
+			fetch('/save_pins', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(pins),
+			})
+			.then(response => response.json())
+			.then(data => {
+				console.log('Success:', data);
+			})
+			.catch((error) => {
+				console.error('Error:', error);
+			});
+		}
+	</script>
+
+</body>
+</html>

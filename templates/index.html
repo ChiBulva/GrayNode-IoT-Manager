@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zoomable Image Viewer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			color: #333;
+		}
+
+		#nav {
+			height: 5vh;
+			background-color: #004c99;
+			color: white;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0 10px;
+		}
+
+		#nav h1 {
+			margin: 0;
+			font-size: 1.5em;
+		}
+
+		button {
+			background-color: #f2f2f2;
+			border: none;
+			padding: 10px 20px;
+			margin: 5px;
+			border-radius: 5px;
+			cursor: pointer;
+			transition: background-color 0.3s;
+		}
+
+		button:hover {
+			background-color: #ddd;
+		}
+
+		
+        /* Layout styles */
+        .container {
+            display: flex;
+        }
+
+        #sidebar {
+            width: 20%;
+            height: 93vh;
+            overflow-y: auto;
+            background-color: #f8f8f8;
+            padding: 10px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        #map {
+            width: 80%;
+            height: 93vh;
+        }
+
+        .pin-item {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+        }
+
+        .pin-item:hover {
+            background-color: #eee;
+        }	
+
+		#searchInput {
+			padding: 8px 15px;
+			border: 1px solid #ccc;
+			border-radius: 20px;
+			box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+			outline: none;
+			transition: all 0.3s ease;
+			width: 200px; /* Adjust the width as needed */
+			margin-right: 10px;
+		}
+
+		#searchInput:focus {
+			border-color: #004c99;
+			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+		}
+
+		#searchInput::placeholder {
+			color: #999;
+		}
+		#metrics {
+			display: flex;
+			justify-content: flex-end;
+			padding: 10px;
+			border-bottom: 1px solid #ddd;
+			gap: 20px; /* Add space between metric items */
+		}
+
+		.metric-item {
+			white-space: nowrap;
+		}
+		.pin-label {
+			background-color: rgba(100, 100, 100, 0.5);
+			font-size: 12px;
+			text-align: center;
+			color: yellow; /* Make text color red */
+			font-weight: bold; /* Make text bold */
+		}
+		#pinDataModal {
+			position: fixed;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			background-color: white;
+			padding: 20px;
+			border-radius: 10px;
+			box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+			z-index: 1000; /* High z-index to float above everything */
+			display: none; /* Initially hidden */
+		}
+
+		#pinDataModal.active {
+			display: block; /* Show when active */
+		}
+
+		.overlay {
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(0, 0, 0, 0.5);
+			z-index: 999; /* Just below the modal */
+			display: none; /* Initially hidden */
+		}
+
+		.overlay.active {
+			display: block; /* Show when active */
+		}
+		.modal {
+			display: none;
+			position: fixed;
+			z-index: 1000;
+			left: 50%;
+			top: 50%;
+			transform: translate(-50%, -50%);
+			background-color: white;
+			padding: 20px;
+			border-radius: 10px;
+			box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+			width: 80%;
+			max-width: 500px;
+		}
+
+		.modal-content {
+			margin: 0;
+			padding: 0;
+		}
+
+		.form-group {
+			margin-bottom: 15px;
+		}
+
+		.form-group label {
+			display: block;
+			margin-bottom: 5px;
+		}
+
+		.form-group input[type="text"] {
+			width: 100%;
+			padding: 8px;
+			border: 1px solid #ccc;
+			border-radius: 4px;
+			box-sizing: border-box;
+		}
+
+		.form-actions {
+			text-align: right;
+			padding-top: 10px;
+		}
+
+		.btn {
+			padding: 10px 15px;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+			transition: background-color 0.3s;
+		}
+
+		.btn-primary {
+			background-color: #007bff;
+			color: white;
+		}
+
+		.btn-secondary {
+			background-color: #6c757d;
+			color: white;
+		}
+
+		.btn:hover {
+			opacity: 0.9;
+		}
+
+		.mode-on {
+			border: 5px solid green !important; /* Using !important to ensure override */
+		}
+
+	</style>
+
+</head>
+<body>
+	<div id="nav">
+		<button id="saveButton">Save Points</button>
+		<input type="text" id="searchInput" onchange="updateSidebar()" placeholder="Search by keyword...">
+
+		<div id="metrics">
+			<div class="metric-item" id="visibleReadersMetric"><!-- Visible Readers will be displayed here --></div>
+			<div class="metric-item" id="readersWithIpMetric"><!-- Readers with IP will be displayed here --></div>
+			<div class="metric-item" id="needsAttentionMetric"><!-- Needs Attention will be displayed here --></div>
+		</div>
+		<button id="editModeButton" onclick="toggleEditMode()">Edit Mode: OFF</button>
+		<button id="deleteModeButton" onclick="toggleDeleteMode()">Delete Mode: OFF</button>
+	</div>	
+	<!-- Modal Form for Pin Data -->
+	<div id="pinDataModal" class="modal">
+		<form id="pinDataForm" class="modal-content">
+			<div class="form-group">
+				<label for="reader_id">Reader ID:</label>
+				<input type="text" id="reader_id" name="reader_id">
+			</div>
+			<div class="form-group">
+				<label for="ipAddress">IP Address:</label>
+				<input type="text" id="ipAddress" name="ipAddress">
+			</div>
+			<div class="form-group">
+				<label for="location">Location:</label>
+				<input type="text" id="location" name="location">
+			</div>
+			<div class="form-group">
+				<label for="name">Name:</label>
+				<input type="text" id="name" name="name">
+			</div>
+			<div class="form-group">
+				<label for="twxUrl">TWX URL:</label>
+				<input type="text" id="twxUrl" name="twxUrl">
+			</div>
+			<div class="form-group">
+				<label for="twxID">TWX ID:</label>
+				<input type="text" id="twxID" name="twxID">
+			</div>
+			<div class="form-group">
+				<label for="imageUpload">Upload Image:</label>
+				<input type="file" id="imageUpload" name="image" accept="image/png, image/jpeg" multiple>
+			</div>
+
+			<div class="form-actions">
+				<input type="submit" value="Submit" class="btn btn-primary">
+				<button type="button" id="cancelButton" class="btn btn-secondary">Cancel</button>
+			</div>
+		</form>
+	</div>
+
+    <div class="container">
+            <div id="sidebar">
+				<!-- Rest of the sidebar content -->
+			</div>
+        <div id="map"></div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+	<script>
+		var editMode = false;
+		var deleteMode = false;
+
+		function toggleEditMode() {
+			editMode = !editMode;
+
+			// Update the text and classes for editModeButton
+			document.getElementById('editModeButton').textContent = `Edit Mode: ${editMode ? 'ON' : 'OFF'}`;
+			if (editMode) {
+				document.getElementById('editModeButton').classList.add('mode-on');
+			} else {
+				document.getElementById('editModeButton').classList.remove('mode-on');
+			}
+
+			// If edit mode is activated, turn off delete mode
+			if (editMode) {
+				deleteMode = false;
+				document.getElementById('deleteModeButton').textContent = 'Delete Mode: OFF';
+				document.getElementById('deleteModeButton').classList.remove('mode-on');
+			}
+		}
+
+		function toggleDeleteMode() {
+			deleteMode = !deleteMode;
+
+			// Update the text and classes for deleteModeButton
+			document.getElementById('deleteModeButton').textContent = `Delete Mode: ${deleteMode ? 'ON' : 'OFF'}`;
+			if (deleteMode) {
+				document.getElementById('deleteModeButton').classList.add('mode-on');
+			} else {
+				document.getElementById('deleteModeButton').classList.remove('mode-on');
+			}
+
+			// If delete mode is activated, turn off edit mode
+			if (deleteMode) {
+				editMode = false;
+				document.getElementById('editModeButton').textContent = 'Edit Mode: OFF';
+				document.getElementById('editModeButton').classList.remove('mode-on');
+			}
+		}
+
+
+		function ipToNumber(ip) {
+			if (!ip || !ip.match(/^(\d{1,3}\.){3}\d{1,3}$/)) {
+				// If the IP is blank or doesn't match the pattern of an IPv4 address, return 0
+				return 0;
+			}
+
+			return ip.split('.').reduce((acc, octet) => {
+				const num = parseInt(octet, 10);
+				return (acc << 8) + (isNaN(num) ? 0 : num);
+			}, 0);
+		}
+		// Event listener for the Cancel button
+		document.getElementById('cancelButton').addEventListener('click', function() {
+			closePinDataModal();
+		});
+		document.addEventListener('DOMContentLoaded', (event) => {
+			var overlay = document.createElement('div');
+			overlay.classList.add('overlay');
+			document.body.appendChild(overlay);
+
+			overlay.addEventListener('click', function() {
+				document.getElementById('pinDataModal').classList.remove('active');
+				this.classList.remove('active');
+			});
+		});		
+		function closePinDataModal() {
+			var modal = document.getElementById('pinDataModal');
+			// Hide the modal form
+			modal.classList.remove('active');
+			// Additionally, set display to none after a short delay to ensure it's not focusable
+			setTimeout(function() {
+				modal.style.display = 'none';
+			}, 300); // Adjust the delay to match any transition duration you might have
+
+			// Hide the overlay
+			document.querySelector('.overlay').classList.remove('active');
+			// Reset currentPinIndex to -1 to indicate no pin is currently selected
+			currentPinIndex = -1;
+		}
+		
+		function updateSidebar() {
+			var sidebar = document.getElementById('sidebar');
+			var searchKeyword = document.getElementById('searchInput').value.toLowerCase();
+			var metricsDiv = document.getElementById('metrics');
+			sidebar.innerHTML = ''; // Clear existing content
+			//sidebar.innerHTML = '<div id="metrics" style="padding: 10px; border-bottom: 1px solid #ddd;"></div>'; // Clear existing content but keep the metrics div
+			
+			// Metrics for user to know what they are seeing
+			var visibleReadersCount = 	0;
+			var readersWithIpCount = 0;
+			
+			pins.sort((a, b) => {
+				let idA = parseInt(a.data.reader_id);
+				let idB = parseInt(b.data.reader_id);
+				return idA - idB;
+			});
+
+			pins.forEach(pin => {
+				let isBlankEntry = !(pin.data.reader_id || pin.data.ipAddress || pin.data.location || pin.data.name);
+				let matchesSearch = false;
+
+
+				// If there's a search keyword, check if any property in pin.data matches the search criteria
+				if (searchKeyword) {
+					for (let prop in pin.data) {
+						if (pin.data.hasOwnProperty(prop) && pin.data[prop] && pin.data[prop].toString().toLowerCase().includes(searchKeyword)) {
+							matchesSearch = true;
+							break; // Stop searching if a match is found
+						}
+					}
+				} else {
+					// If there's no search keyword, include all entries, including blank ones
+					matchesSearch = true;
+				}
+
+				// Handle marker visibility
+				handleMarkerVisibility(pin.marker, pin.label, matchesSearch);
+
+				if (matchesSearch) {
+					// Increment count if a reader is visible
+					if (pin.data.reader_id > 0) {
+						visibleReadersCount++;
+					}
+					// Increment count if a reader Has IP
+					if (pin.data.ipAddress) {
+						readersWithIpCount++;
+					}
+					
+					var pinItem = document.createElement('div');
+					pinItem.classList.add('pin-item');
+					pinItem.innerHTML = `<strong>Reader ID:</strong> ${pin.data.reader_id || 'N/A'}<br><strong>IP:</strong> ${pin.data.ipAddress || 'N/A'}<br><strong>Location:</strong> ${pin.data.location || 'N/A'}<br><strong>Name:</strong> ${pin.data.name || 'N/A'}`;
+
+					pinItem.onclick = function() {
+						map.setView([pin.marker.getLatLng().lat, pin.marker.getLatLng().lng], map.getZoom());
+						pin.marker.openPopup();
+					};
+					sidebar.appendChild(pinItem);
+				}
+				
+			});
+
+			// Update the individual metric divs
+			document.getElementById('visibleReadersMetric').innerHTML = `<strong>Readers Locations:</strong> ${visibleReadersCount}`;
+			document.getElementById('readersWithIpMetric').innerHTML = `<strong>On Shop Floor:</strong> ${readersWithIpCount}`;
+			document.getElementById('needsAttentionMetric').innerHTML = `<strong>Needs Reader:</strong> ${visibleReadersCount - readersWithIpCount}`;
+			
+		}
+
+
+
+
+
+		function handleMarkerVisibility(marker, label, isVisible) {
+			if (isVisible) {
+				marker.addTo(map);
+				label.addTo(map);
+			} else {
+				map.removeLayer(marker);
+				map.removeLayer(label);
+			}
+		}
+
+		document.getElementById('saveButton').addEventListener('click', function() {
+			console.log(pins);
+			let pinsToSave = pins.map(pin => ({ latitude: pin.latitude, longitude: pin.longitude }));
+			// Send pinsToSave to the server
+			handleJsonData(pins);
+			updateSidebar();
+		});
+
+
+		// Call loadPins on page load
+		loadPins();	
+
+		var map = L.map('map', {
+			minZoom: 1,
+			maxZoom: 4,
+			center: [0, 0],
+			zoom: 1,
+			crs: L.CRS.Simple
+		});
+
+		var imageUrl = "{{ image_url }}"; // Replace with your image URL
+		var pins = []; // Array to store pin data
+
+		var img = new Image();
+		img.onload = function() {
+			var w = this.width;
+			var h = this.height;
+			var southWest = map.unproject([0, h], map.getMaxZoom()-1);
+			var northEast = map.unproject([w, 0], map.getMaxZoom()-1);
+			var bounds = new L.LatLngBounds(southWest, northEast);
+			L.imageOverlay(imageUrl, bounds).addTo(map);
+			map.fitBounds(bounds);
+		};
+		img.src = imageUrl;
+
+
+		function handleJsonData(pins) {
+			var pinsToSend = pins.map(pin => ({
+				latitude: pin.latitude,
+				longitude: pin.longitude,
+				data: pin.data || ''  // Include the extra data
+			}));
+
+			fetch('/save_pins', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(pinsToSend),
+			})
+			.then(response => response.json())
+			.then(data => {    
+				console.log('Success:', data);
+				alert("Points have been successfully saved."); // Add this line for the alert
+			})
+			.catch((error) => {
+				console.error('Error:', error);
+				alert("An error occurred while saving the points."); // You can also add an alert for an error scenario
+			});
+		}
+
+
+		map.on('click', function(e) {
+			if (!e.originalEvent.shiftKey && !e.originalEvent.ctrlKey && !editMode && !deleteMode) {
+				var newPinData = {};  // Prompt for data when a new pin is placed
+				addNewPin(e.latlng.lat, e.latlng.lng, newPinData);
+			}
+		});
+
+		function loadPins() {
+			fetch('/get_pins') 
+				.then(response => response.json())
+				.then(data => {
+					data.forEach(pinData => {
+						addNewPin(pinData.latitude, pinData.longitude, pinData.data);
+					});
+				})
+				.catch(error => console.error('Error loading pins:', error));
+		}
+		
+		var staticUrl = "{{ url_for('static', filename='') }}";
+		var currentPinIndex = -1;
+
+	
+		function getLastNumberOfIP(ipAddress) {
+			if (!ipAddress) return '-'; // Return 'N/A' if ipAddress is not defined or empty
+
+			var parts = ipAddress.split('.'); // Split the IP address into its components
+			if (parts.length !== 4) return '-'; // Check if it's a valid IPv4 address
+
+			return parts[3]; // Return the last part of the IP address
+		}
+	
+		function addNewPin(lat, lng, pinData) {
+			var hasIpAddress = !!pinData.ipAddress;
+			var hasTwxUrl = !!pinData.twxUrl;
+			var markerColor;
+
+			if (!hasIpAddress) {
+				markerColor = 'orange'; // Orange for neither IP nor TWX URL
+			} else if (hasIpAddress) {
+				markerColor = 'green'; // Green for both IP and TWX URL
+			}
+			
+			var marker = L.marker([lat, lng], { 
+				icon: new L.Icon({ 
+					iconUrl: staticUrl + "images/" + markerColor + '_icon.png',
+					iconSize: [25, 41],
+					iconAnchor: [12, 41],
+					popupAnchor: [1, -34],
+					shadowSize: [41, 41]
+				})
+			}).addTo(map);
+
+
+			
+			
+			marker.bindPopup(generatePopupContent(pinData));  // Bind popup with initial data
+			marker.on('click', function(event) {
+				if (event.originalEvent.ctrlKey || editMode) {
+					// Ctrl+Click: Edit data
+					
+					document.getElementById('pinDataModal').classList.add('active');
+					document.querySelector('.overlay').classList.add('active');
+					currentPinIndex = pins.findIndex(pin => pin.marker === marker);
+					promptForData(pins[currentPinIndex].data);					
+					
+					
+				} else if (event.originalEvent.shiftKey || deleteMode) {
+					// Shift+Click: Remove pin
+					map.removeLayer(marker);
+					map.removeLayer(label); // Remove the label as well
+					pins = pins.filter(pin => pin.marker !== marker);
+					
+				} else {
+					// Regular Click: Open the popup
+					marker.openPopup();
+				}
+			});
+			
+			// Add a label for the ID
+			var label = L.marker([lat, lng], {
+				icon: L.divIcon({
+					className: 'pin-label', // Add custom class for styling
+					html: `<div>${pinData.reader_id || 'N/A'} | ${getLastNumberOfIP(pinData.ipAddress) || 'N/A'}</div>`, // Display reader ID
+					iconSize: [50, 20], // Adjust size as needed
+					iconAnchor: [25, 65] // Adjust position relative to pin
+				})
+			}).addTo(map);
+
+			pins.push({ latitude: lat, longitude: lng, marker: marker, label: label, data: pinData }); // Include the label in the pins array
+			updateSidebar();	
+		}
+
+		function updateMarkerIcon(marker, pinData) {
+			var pinHasData = !!pinData.ipAddress;
+			var markerColor = pinHasData ? 'green' : 'orange';
+
+			marker.setIcon(new L.Icon({ 
+				iconUrl: staticUrl + 'images/' + markerColor + '_icon.png',
+				iconSize: [25, 41],
+				iconAnchor: [12, 41],
+				popupAnchor: [1, -34],
+				shadowSize: [41, 41]
+			}));
+		}
+
+		function generatePopupContent(data) {
+			var imageUrl = `/view/RFID/${data.reader_id}`; // Update 'your_image_name.png' with actual image name if dynamic
+			data.link = data.ipAddress ? "http://" + data.ipAddress : '';
+			return `Read Point ID: ${data.reader_id || ''}<br>
+					IP Address: ${data.ipAddress || ''}<br>
+					Location: ${data.location || ''}<br>
+					Name: ${data.name || ''}<br>
+					TWX URL: <a href="${data.twxUrl || '#'}" target="_blank">TWX URL</a><br>
+					TWX ID: ${data.twxID || 'N / A'}<br>
+					Link: <a href="${data.link || '#'}" target="_blank">Reader Config</a><br>
+					Image: <a href="${imageUrl}" target="_blank">View Image</a>`; // Add this line
+		}
+	
+		var currentPinData = null;
+
+		function promptForData(existingData) {
+			currentPinData = existingData;
+			document.getElementById('reader_id').value = existingData.reader_id || '';
+			document.getElementById('ipAddress').value = existingData.ipAddress || '';
+			document.getElementById('location').value = existingData.location || '';
+			document.getElementById('name').value = existingData.name || '';
+			document.getElementById('twxUrl').value = existingData.twxUrl || '';
+			document.getElementById('twxID').value = existingData.twxID || '';
+			// Show the modal form
+			document.getElementById('pinDataModal').style.display = 'block';
+		}		
+		
+		// Function to generate label content
+		function generateLabelContent(data) {
+			return `<div>${data.reader_id || 'N/A'} | ${getLastNumberOfIP(data.ipAddress) || 'N/A'}</div>`;
+		}
+				
+		function uploadImages(readerId, imageFiles) {
+			const formData = new FormData();
+			formData.append('reader_id', readerId);
+			
+			// Append each file to the formData
+			for (let i = 0; i < imageFiles.length; i++) {
+				formData.append('image', imageFiles[i]);
+			}
+
+			fetch('/upload_image', {
+				method: 'POST',
+				body: formData
+			})
+			.then(response => response.json())
+			.then(data => console.log(data))
+			.catch(error => console.error('Error:', error));
+		}
+		
+		// Update the pinDataForm submit event listener
+		document.getElementById('pinDataForm').addEventListener('submit', function(event) {
+			event.preventDefault();
+
+			if (currentPinIndex !== -1) {
+				// Retrieve and update data from the form
+				var updatedData = {
+					reader_id: document.getElementById('reader_id').value,
+					ipAddress: document.getElementById('ipAddress').value,
+					location: document.getElementById('location').value,
+					name: document.getElementById('name').value,
+					twxUrl: document.getElementById('twxUrl').value,
+					twxID: document.getElementById('twxID').value,
+					// Add any other fields as necessary
+				};
+
+				// Add image upload logic
+				var readerId = document.getElementById('reader_id').value;
+				var imageFiles = document.getElementById('imageUpload').files;
+				if (imageFiles.length > 0) {
+					uploadImages(readerId, imageFiles);
+				}
+
+				// Update the pin's data
+				pins[currentPinIndex].data = updatedData;
+				console.log(updatedData)
+				// Refresh the map and sidebar to reflect the changes
+				updateMarkerIcon(pins[currentPinIndex].marker, updatedData);
+				pins[currentPinIndex].marker.setPopupContent(generatePopupContent(updatedData));
+				updateSidebar();
+				// Update the label content
+				if (pins[currentPinIndex].label) {
+					var newLabelIcon = L.divIcon({
+						className: 'pin-label',
+						html: generateLabelContent(updatedData),
+						iconSize: [50, 20],
+						iconAnchor: [25, 65]
+					});
+					pins[currentPinIndex].label.setIcon(newLabelIcon);
+				}
+				// Reset currentPinIndex
+				currentPinIndex = -1;
+			}
+
+			closePinDataModal()
+		});
+	</script>
+
+</body>
+</html>

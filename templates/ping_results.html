@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ping Results</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        .reachable { background-color: green; }
+        .unreachable { background-color: red; }
+    </style>
+</head>
+<body>
+    <h2>Ping Results</h2>
+    <table>
+        <tr>
+            <th>IP Address</th>
+            <th>Status</th>
+        </tr>
+        {% for result in results %}
+        <tr>
+            <td>{{ result.ip }}</td>
+            <td class="{{ 'reachable' if result.status == 'Reachable' else 'unreachable' }}">{{ result.status }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
